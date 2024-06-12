@@ -1,0 +1,33 @@
+{% for step in historical_steps %}
+OBSERVATION:
+
+{{ step.observation }}
+
+OPTIONS:
+{% for option in step.options %}
+{{ option }}
+{% endfor %}
+DECISION:
+
+```json
+{
+  "chosen": "{{ step.chosen }}"
+}
+```
+{% endfor %}
+CURRENT OBSERVATION:
+
+{{final_observation}}
+
+CURRENT OPTIONS:
+{% for option in final_options %}
+{{ option }}
+{% endfor %}
+Please decide which of the above options you would like to follow and provide your response in JSON format wrapped in ```json ``` fences. Follow this exact schema:
+```json
+{
+  "reasoning": ...,
+  "chosen": ...
+}
+```
+Ensure the response can be parsed by Python `json.loads`.

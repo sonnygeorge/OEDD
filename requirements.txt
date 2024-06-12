@@ -1,0 +1,11 @@
+Jinja2
+langchain
+langchain-openai
+langchain-google-genai
+langchain-anthropic
+langchain-nvidia-ai-endpoints
+langchain-ai21
+nicegui
+pandas
+pydantic
+python-dotenv
