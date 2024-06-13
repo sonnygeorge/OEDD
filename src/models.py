@@ -1,7 +1,19 @@
 from enum import StrEnum
-from typing import List, Dict, Union, Optional, Literal
+from typing import Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel
+
+
+class LlmChoice(BaseModel):
+    """The LLM's selection of a choice in a test episode and its reasoning.
+
+    Attributes:
+        reasoning (str): The reasoning the LLM used to select the choice.
+        choice (str): The choice the LLM selected.
+    """
+
+    reasoning: str
+    choice: str
 
 
 class IntermediateInference(BaseModel):

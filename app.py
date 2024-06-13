@@ -1,21 +1,20 @@
-import re
 import argparse
-import os
 import json
-from typing import List, Tuple, Optional, Literal
+import os
+import re
+from typing import List, Literal, Optional, Tuple
 
 from nicegui import ui
 from pydantic import BaseModel
-
 from schema import (
-    PivotalTestConstituents,
-    Test,
-    IntermediateInference,
-    ReasoningVariations,
-    ContextLengthVariations,
     Abbreviations,
+    ContextLengthVariations,
     Fences,
     HistoricalStep,
+    IntermediateInference,
+    PivotalTestConstituents,
+    ReasoningVariations,
+    Test,
     TestStep,
 )
 

@@ -1,17 +1,17 @@
 import random
-from typing import List, Tuple, Literal
+from typing import List, Literal, Tuple
 
 from jinja2 import Template
 
 from src.models import (
-    PromptTemplateData,
+    Fence,
     HistoricalStep,
+    PromptTemplateData,
     PromptTemplateHistoricalStep,
-    TestStep,
     Test,
     TestConfiguration,
-    Fence,
     TestRun,
+    TestStep,
 )
 
 ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
