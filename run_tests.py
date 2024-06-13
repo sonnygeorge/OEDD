@@ -1,30 +1,28 @@
-import os
 import json
+import os
 import re
-from datetime import datetime
-from typing import List, Literal, Optional
+import time
+from typing import List, Literal, Optional, Tuple
 
-import rich
-from dotenv import load_dotenv
-from jinja2 import Template
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_nvidia_ai_endpoints import ChatNVIDIA
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
-from langchain_core.language_models import BaseChatModel
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_ai21 import ChatAI21
-from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel
+import rich
 import scipy.stats as stats
+from dotenv import load_dotenv
+from jinja2 import Template
+from langchain_ai21 import ChatAI21
+from langchain_anthropic import ChatAnthropic
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
+from langchain_nvidia_ai_endpoints import ChatNVIDIA
+from langchain_openai import ChatOpenAI
+from pydantic import BaseModel
 
-
-from src.models import Test, TestRun
+from src.models import LlmChoice, Test, TestRun
 from src.utils import get_data_for_inference
-
 
 load_dotenv()
 
@@ -147,19 +145,18 @@ CONFIGS_TO_RUN = [
 def extract_action_choice_from_response_content(response_content: str) -> Optional[str]:
     pattern = r"```json(.*?)```"
     matches = re.findall(pattern, response_content, re.DOTALL)
-    json_response = None
+
     for match in matches[::-1]:
         try:
-            json_object: dict = json.loads(str(match).strip())
-            assert set(json_object.keys()) == {"reasoning", "chosen"}
-            json_response = json_object
-            break
-        except Exception as e:
+            action_choice_object = LlmChoice.model_validate_json(match)
+            return action_choice_object.choice
+        except Exception:
             print(f"Error decoding JSON")
-    return json_response.get("chosen") if json_response else None
+
+    return None
 
 
-def calculate_confidence_interval(data, confidence_level=0.95) -> Optional[int]:
+def calculate_confidence_interval(data, confidence_level=0.95) -> Tuple[float, float]:
     sample_size = len(data)
     sample_mean = np.mean(data)
     standard_error = stats.sem(data)
@@ -192,7 +189,7 @@ def infer_action_choice(
     model_string = get_model_string_from_model(chat_model)
     if model_string == "mistralai/mixtral-8x22b-instruct-v0.1":
         # Hotfix for this NVIDIA API model since requests get bounced otherwise
-        single_prompt = test_run_data.system_prompt + test_run_data.user_prompt
+        single_prompt = test_run_data.system_prompt + "\n" + test_run_data.user_prompt
         messages = [single_prompt]
     else:
         messages = [
@@ -212,7 +209,7 @@ def run_test_config_until_confidence_interval_small_enough(
 ) -> pd.DataFrame:
     inference_runs_correctness = []
     runs: List[TestRun] = []
-    start = datetime.now()
+    start = time.perf_counter()
     while True:
         # Get fresh test run object with new random shuffling of random-order components
         test_run_data = get_data_for_inference(
@@ -245,7 +242,7 @@ def run_test_config_until_confidence_interval_small_enough(
                 inference_runs_correctness, CONFIDENCE_INTERVAL
             )
             confidence_interval_width = upper_bound - lower_bound
-            elapsed = datetime.now() - start
+            elapsed = time.perf_counter() - start
             print_msg = PRINT_MSG.format(
                 model=test_run_data.chat_model_string,
                 len=test_run_data.length_class,
@@ -262,6 +259,7 @@ def run_test_config_until_confidence_interval_small_enough(
                 and confidence_interval_width < MAX_CONFIDENCE_INTERVAL_WIDTH
             ):
                 break
+
     return pd.DataFrame([run.model_dump() for run in runs])
 
 
