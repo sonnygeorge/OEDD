@@ -18,19 +18,22 @@ ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
 def _get_randomly_ordered_option_strings_and_char_of_specified_idx(
-    options: List[str], remember_idx: int
+    options: List[str], desired_option_idx: int
 ) -> Tuple[List[str], str]:
-    assert remember_idx < len(options)
+    assert desired_option_idx < len(options)
+
     new_order = random.sample(range(len(options)), len(options))
-    new_remember_idx = new_order.index(remember_idx)
-    new_options = [options[i] for i in new_order]
-    option_strings = []
-    for i, option in enumerate(new_options):
+    idx_to_original_desired_option = new_order.index(desired_option_idx)
+    reordered_options = [options[i] for i in new_order]
+    reordered_option_strings = []
+
+    for i, option in enumerate(reordered_options):
         char = ALPHA[i]
-        option_strings.append(f"{char}. {option}")
-        if i == new_remember_idx:
-            remember_alpha_char = char
-    return option_strings, remember_alpha_char
+        reordered_option_strings.append(f"{char}. {option}")
+        if i == idx_to_original_desired_option:
+            desired_option_alpha_char = char
+
+    return reordered_option_strings, desired_option_alpha_char
 
 
 def _get_prompt_ready_data(
@@ -47,6 +50,7 @@ def _get_prompt_ready_data(
     historical_episodes = [  # Get the historical episodes from mapping in this order
         test.historical_episodes[uid] for uid in ordered_historical_episode_uids
     ]
+
     # Get the final episode from mapping
     final_episode = test.test_episodes[test_configuration.final_episode_uid]
     # Verify that final episode contains only one TestStep at the end
@@ -54,9 +58,11 @@ def _get_prompt_ready_data(
     assert all(isinstance(step, HistoricalStep) for step in final_episode[:-1])
     # Flatten all of the historical episodes into one list of steps
     historical_steps = sum(historical_episodes, [])
-    # Increment the historical steps from the final episode to this list
+    # Add the historical steps from the final episode to this list
     historical_steps.extend(final_episode[:-1])
-    final_test_step = final_episode[-1]  # Isolate the final TestStep
+    # Isolate the final TestStep
+    final_test_step = final_episode[-1]
+
     # Convert historical steps into template-ready data objects
     template_historical_steps = []
     for historical_step in historical_steps:
@@ -73,6 +79,7 @@ def _get_prompt_ready_data(
                 chosen=chosen_alpha_char,
             )
         )
+
     # Randomly sample the final options and return the better choice alpha char
     randomized_final_options, better_choice_char = (
         _get_randomly_ordered_option_strings_and_char_of_specified_idx(
@@ -86,6 +93,7 @@ def _get_prompt_ready_data(
         final_observation=final_test_step.observation,
         final_options=randomized_final_options,
     )
+
     return prompt_template_data, better_choice_char
 
 
@@ -93,9 +101,28 @@ def get_span_location_given_fence(text: str, fence: Fence) -> Tuple[int, int]:
     """Returns the index after the first fence instance and the index before the second
     fence instance in a string"""
     assert text.count(fence) == 2
+
     first_fence_end = text.find(fence) + len(fence)
     second_fence_start = text.rfind(fence)
+
     return first_fence_end, second_fence_start
+
+
+def remove_fences_from_prompt(
+    prompt: str, fence: str, starting_idx: int = 0
+) -> Tuple[str, int, int]:
+    """Removes the specified fence from the prompt and returns the updated prompt and
+    the start and end indices of the fence."""
+    (
+        fence_span_start,
+        fence_span_end,
+    ) = get_span_location_given_fence(prompt, fence)
+    prompt = prompt.replace(fence, "")
+    return (
+        prompt,
+        fence_span_start + starting_idx,
+        fence_span_end + starting_idx,
+    )
 
 
 def get_data_for_inference(
@@ -155,12 +182,9 @@ def get_data_for_inference(
 
     # Handle and validate red herring fences
     if include_red_herring is True:
-        red_herring_span_start, red_herring_span_end = get_span_location_given_fence(
-            user_prompt, Fence.RED_HERRING
+        user_prompt, red_herring_span_start, red_herring_span_end = (
+            remove_fences_from_prompt(user_prompt, Fence.RED_HERRING, sys_prompt_length)
         )
-        user_prompt = user_prompt.replace(Fence.RED_HERRING, "")
-        red_herring_span_start += sys_prompt_length
-        red_herring_span_end += sys_prompt_length
     else:
         assert Fence.RED_HERRING not in user_prompt
         red_herring_span_start = None
@@ -169,38 +193,32 @@ def get_data_for_inference(
     # Handle and validate intermediate inference fences
     if require_intermediate_inference is True:
         (
+            user_prompt,
             intermediate_inference_premise_one_span_start,
             intermediate_inference_premise_one_span_end,
-        ) = get_span_location_given_fence(
-            user_prompt, Fence.INTERMEDIATE_INFERENCE_PREMISE_ONE
+        ) = remove_fences_from_prompt(
+            user_prompt, Fence.INTERMEDIATE_INFERENCE_PREMISE_ONE, sys_prompt_length
         )
-        user_prompt = user_prompt.replace(Fence.INTERMEDIATE_INFERENCE_PREMISE_ONE, "")
-        intermediate_inference_premise_one_span_start += sys_prompt_length
-        intermediate_inference_premise_one_span_end += sys_prompt_length
 
         (
+            user_prompt,
             intermediate_inference_premise_two_span_start,
             intermediate_inference_premise_two_span_end,
-        ) = get_span_location_given_fence(
-            user_prompt, Fence.INTERMEDIATE_INFERENCE_PREMISE_TWO
+        ) = remove_fences_from_prompt(
+            user_prompt, Fence.INTERMEDIATE_INFERENCE_PREMISE_TWO, sys_prompt_length
         )
-        user_prompt = user_prompt.replace(Fence.INTERMEDIATE_INFERENCE_PREMISE_TWO, "")
-        intermediate_inference_premise_two_span_start += sys_prompt_length
-        intermediate_inference_premise_two_span_end += sys_prompt_length
 
         assert Fence.INTERMEDIATE_INFERENCE_CONCLUSION not in user_prompt
         intermediate_inference_conclusion_span_start = None
         intermediate_inference_conclusion_span_end = None
     else:
         (
+            user_prompt,
             intermediate_inference_conclusion_span_start,
             intermediate_inference_conclusion_span_end,
-        ) = get_span_location_given_fence(
-            user_prompt, Fence.INTERMEDIATE_INFERENCE_CONCLUSION
+        ) = remove_fences_from_prompt(
+            user_prompt, Fence.INTERMEDIATE_INFERENCE_CONCLUSION, sys_prompt_length
         )
-        user_prompt = user_prompt.replace(Fence.INTERMEDIATE_INFERENCE_CONCLUSION, "")
-        intermediate_inference_conclusion_span_start += sys_prompt_length
-        intermediate_inference_conclusion_span_end += sys_prompt_length
 
         assert Fence.INTERMEDIATE_INFERENCE_PREMISE_ONE not in user_prompt
         assert Fence.INTERMEDIATE_INFERENCE_PREMISE_TWO not in user_prompt
