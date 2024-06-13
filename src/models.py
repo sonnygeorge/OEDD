@@ -1,18 +1,30 @@
 from enum import StrEnum
-from typing import List, Dict, Union, Optional, Literal
+from typing import Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel
+
+
+class LlmChoice(BaseModel):
+    """The LLM's selection of a choice in a test episode and its reasoning.
+
+    Attributes:
+        reasoning (str): The reasoning the LLM used to select the choice.
+        choice (str): The choice the LLM selected.
+    """
+
+    reasoning: str
+    choice: str
 
 
 class IntermediateInference(BaseModel):
     """Two independent premises that, only collectively, lead to a rightfully assumed
     conclusion in the universe of a hypothetical Language Model Agent. This conclusion is
-    the basis for the betterness of the "better" action choice in a test.
+    the basis for the superiority of the "better" action choice in a test.
 
     Attributes:
         premise_one (str): The first premise.
         premise_two (str): The second premise.
-        conclusion (str): The unambiguously makeable assumption that follows from both
+        conclusion (str): The unambiguously reachable assumption that follows from both
             premises collectively.
     """
 
@@ -33,8 +45,8 @@ class PivotalTestConstituents(BaseModel):
             decision to be made.
         better_choice (str): The better action choice.
         worse_choice (str): The worse action choice.
-        intermediate_inference (NecessaryDeduction): A deduction that makes the better choice
-            unambiguously superior to the worse choice.
+        intermediate_inference (IntermediateInference): A deduction that makes the better
+            choice unambiguously superior to the worse choice.
         red_herring (str): A previously-discoverable persistent universe truth that,
             assuming the agent fails to make the `intermediate_inference` serves to skew
             their judgement away from the better choice.
@@ -136,16 +148,16 @@ class Test(BaseModel):
     """All of the data associated with a test.
 
     Attributes:
-        canary (str): Marks tests with a unique pattern that if completable by an LLM,
+        canary (str): Marks tests with a unique pattern that, if completable by an LLM,
             indicates that all test data has likely leaked into the LLM's training data.
         title (str): The title of the test.
         pivotal_constituents (PivotalTestConstituents): The pivotal constituents of the test.
         system_prompt (str): A system prompt describing important system-level information
             to the LLM agent.
         historical_episodes (HistoricalEpisodesDict): a map of all historical episodes that
-            have been written for this test indexed by their uid strings.
+            have been written for this test mapped by their uid strings.
         test_episodes (TestEpisodesDict): a map of all test episodes that have been written
-            for this test indexed by their uid strings.
+            for this test mapped by their uid strings.
         configurations (ReasoningConfigurations): The different setups of required reasoning
             and context length.
     """
@@ -164,7 +176,40 @@ class TestRun(BaseModel):
     rows to the results .csv file.
 
     Attributes:
-    # FIXME
+        test_title (str): The title of the test.
+        system_prompt (str): A system prompt describing important system-level information
+            to the LLM agent.
+        user_prompt (str): A user prompt that sets the stage for the LLM agent to make a
+            decision.
+        better_choice_char (str): The character that represents the better choice.
+        chosen_char (Optional[str]): The character that the LLM agent chose.
+        was_correct (Optional[bool]): Whether the LLM agent chose the better choice.
+        chat_model_string (Optional[str]): The string that the LLM agent used to make its
+            decision.
+        temperature (Optional[float]): The temperature setting used to generate the
+            `chat_model_string`.
+        iteration_num (Optional[int]): The iteration number of the LLM agent.
+        total_length (int): The total length of the prompt.
+        length_class (Literal["short", "medium", "long"]): The length class of the prompt.
+        include_red_herring (bool): Whether the red herring was included in the prompt.
+        require_intermediate_inference (bool): Whether the intermediate inference was
+            included.
+        red_herring_prompt_span_start (Optional[int]): The start index of the red herring
+            in the prompt.
+        red_herring_prompt_span_end (Optional[int]): The end index of the red herring in
+            the prompt.
+        intermediate_inference_premise_one_prompt_span_start (Optional[int]): The start
+            index of the first premise of the intermediate inference in the prompt.
+        intermediate_inference_premise_one_prompt_span_end (Optional[int]): The end index
+            of the first premise of the intermediate inference in the prompt.
+        intermediate_inference_premise_two_prompt_span_start (Optional[int]): The start
+            index of the second premise of the intermediate inference in the prompt.
+        intermediate_inference_premise_two_prompt_span_end (Optional[int]): The end index
+            of the second premise of the intermediate inference in the prompt.
+        intermediate_inference_conclusion_prompt_span_start (Optional[int]): The start
+            index of the conclusion of the intermediate inference in the prompt.
+        intermediate_inference_conclusion_prompt_span_end (Optional[int]): The end index
+            of the conclusion of the intermediate inference in the prompt.
     """
 
     test_title: str
@@ -176,7 +221,6 @@ class TestRun(BaseModel):
     chat_model_string: Optional[str] = None  # Populated after init
     temperature: Optional[float] = None  # Populated after init
     iteration_num: Optional[int] = None  # Populated after init
-    total_length: int
     total_length: int
     length_class: Literal["short", "medium", "long"]
     include_red_herring: bool
