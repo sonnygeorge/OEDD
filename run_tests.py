@@ -163,6 +163,7 @@ def calculate_confidence_interval(data, confidence_level=0.95) -> Tuple[float, f
     margin_of_error = standard_error * stats.t.ppf(
         (1 + confidence_level) / 2.0, sample_size - 1
     )
+
     return sample_mean - margin_of_error, sample_mean + margin_of_error
 
 
@@ -209,6 +210,7 @@ def run_test_config_until_confidence_interval_small_enough(
 ) -> pd.DataFrame:
     inference_runs_correctness = []
     runs: List[TestRun] = []
+
     start = time.perf_counter()
     while True:
         # Get fresh test run object with new random shuffling of random-order components
@@ -288,9 +290,11 @@ def run_tests_for_model(chat_model: BaseChatModel):
         for fname in os.listdir("data"):
             if not fname.endswith(".json"):
                 continue
+
             with open(f"data/{fname}", "r") as f:
                 data = json.load(f)
             test = Test(**data)
+
             for config in CONFIGS_TO_RUN:
                 df = run_test_config_until_confidence_interval_small_enough(
                     chat_model=chat_model,
@@ -302,6 +306,7 @@ def run_tests_for_model(chat_model: BaseChatModel):
                 all_model_runs = pd.concat([all_model_runs, df], ignore_index=True)
                 break  # FIXME: Remove
             break  # FIXME: Remove
+
         add_runs_to_csv(all_model_runs)
     except Exception as e:
         print(f"Error running tests for '{model_string}': {e}")
