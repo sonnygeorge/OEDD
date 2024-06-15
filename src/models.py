@@ -9,11 +9,11 @@ class LlmChoice(BaseModel):
 
     Attributes:
         reasoning (str): The reasoning the LLM used to select the choice.
-        choice (str): The choice the LLM selected.
+        chosen (str): The choice the LLM selected.
     """
 
     reasoning: str
-    choice: str
+    chosen: str
 
 
 class IntermediateInference(BaseModel):
@@ -183,6 +183,8 @@ class TestRun(BaseModel):
             decision.
         better_choice_char (str): The character that represents the better choice.
         chosen_char (Optional[str]): The character that the LLM agent chose.
+        given_reasoning (Optional[str]): The reasoning that the LLM agent gave to justify
+            its choice.
         was_correct (Optional[bool]): Whether the LLM agent chose the better choice.
         chat_model_string (Optional[str]): The string that the LLM agent used to make its
             decision.
@@ -190,6 +192,8 @@ class TestRun(BaseModel):
             `chat_model_string`.
         iteration_num (Optional[int]): The iteration number of the LLM agent.
         total_length (int): The total length of the prompt.
+        get_bias: (Optional[bool]): A flag that tells the code that the prompt should not
+            contain any decision-pertinent information in order to test for a priori bias.
         length_class (Literal["short", "medium", "long"]): The length class of the prompt.
         include_red_herring (bool): Whether the red herring was included in the prompt.
         require_intermediate_inference (bool): Whether the intermediate inference was
@@ -217,14 +221,16 @@ class TestRun(BaseModel):
     user_prompt: str
     better_choice_char: str
     chosen_char: Optional[str] = None  # Populated once LLM inference made
+    given_reasoning: Optional[str] = None  # Populated once LLM inference made
     was_correct: Optional[bool] = None  # Populated once LLM inference made
     chat_model_string: Optional[str] = None  # Populated after init
     temperature: Optional[float] = None  # Populated after init
     iteration_num: Optional[int] = None  # Populated after init
     total_length: int
-    length_class: Literal["short", "medium", "long"]
-    include_red_herring: bool
-    require_intermediate_inference: bool
+    get_bias: Optional[bool] = None  # Populated after init
+    length_class: Optional[Literal["short", "medium", "long"]]
+    include_red_herring: Optional[bool]
+    require_intermediate_inference: Optional[bool]
     red_herring_prompt_span_start: Optional[int]
     red_herring_prompt_span_end: Optional[int]
     intermediate_inference_premise_one_prompt_span_start: Optional[int]

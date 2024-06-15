@@ -1,5 +1,5 @@
 import random
-from typing import List, Literal, Tuple
+from typing import List, Literal, Optional, Tuple
 
 from jinja2 import Template
 
@@ -129,16 +129,30 @@ def get_data_for_inference(
     test: Test,
     user_prompt_template: Template,
     system_prompt_template: Template,
-    include_red_herring: bool,
-    require_intermediate_inference: bool,
-    length_class: Literal["short", "medium", "long"],
+    include_red_herring: Optional[bool],
+    require_intermediate_inference: Optional[bool],
+    length_class: Optional[Literal["short", "medium", "long"]],
+    get_bias: Optional[bool] = False,
 ) -> TestRun:
-    assert length_class in ("short", "medium", "long")
-    assert isinstance(include_red_herring, bool)
-    assert isinstance(require_intermediate_inference, bool)
+    assert length_class in ("short", "medium", "long", None)
+    assert isinstance(include_red_herring, bool) or include_red_herring is None
+    assert (
+        isinstance(require_intermediate_inference, bool)
+        or require_intermediate_inference is None
+    )
 
     # Get the test configuration (episode uids)
-    if include_red_herring is True and require_intermediate_inference is True:
+    if get_bias is True:
+        # Only use the final test episode with no red herring
+
+        episodes = test.test_episodes.keys()
+        matches = [e for e in episodes if "_TEST" in e and "RH" not in e]
+        assert len(matches) == 1
+        config = TestConfiguration(
+            historical_episode_uids=[],
+            final_episode_uid=matches[0],
+        )
+    elif include_red_herring is True and require_intermediate_inference is True:
         if length_class == "short":
             config = test.configurations.intermediate_inference_and_red_herring.short
         elif length_class == "medium":
@@ -178,6 +192,7 @@ def get_data_for_inference(
         final_options=prompt_template_data.final_options,
     )
     system_prompt = system_prompt_template.render(system_prompt=test.system_prompt)
+
     sys_prompt_length = len(system_prompt)
 
     # Handle and validate red herring fences
@@ -211,7 +226,7 @@ def get_data_for_inference(
         assert Fence.INTERMEDIATE_INFERENCE_CONCLUSION not in user_prompt
         intermediate_inference_conclusion_span_start = None
         intermediate_inference_conclusion_span_end = None
-    else:
+    elif get_bias is not True:
         (
             user_prompt,
             intermediate_inference_conclusion_span_start,
@@ -226,6 +241,13 @@ def get_data_for_inference(
         intermediate_inference_premise_one_span_end = None
         intermediate_inference_premise_two_span_start = None
         intermediate_inference_premise_two_span_end = None
+    else:
+        intermediate_inference_premise_one_span_start = None
+        intermediate_inference_premise_one_span_end = None
+        intermediate_inference_premise_two_span_start = None
+        intermediate_inference_premise_two_span_end = None
+        intermediate_inference_conclusion_span_start = None
+        intermediate_inference_conclusion_span_end = None
 
     for fence in Fence:
         assert fence not in user_prompt
@@ -237,6 +259,7 @@ def get_data_for_inference(
         user_prompt=user_prompt,
         better_choice_char=better_choice_char,
         total_length=sys_prompt_length + len(user_prompt),
+        get_bias=get_bias,
         length_class=length_class,
         include_red_herring=include_red_herring,
         require_intermediate_inference=require_intermediate_inference,

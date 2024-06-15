@@ -2,20 +2,20 @@ import argparse
 import json
 import os
 import re
+import random
 from typing import List, Literal, Optional, Tuple
 
 from nicegui import ui
 from pydantic import BaseModel
-from schema import (
-    Abbreviations,
-    ContextLengthVariations,
-    Fences,
+from src.models import (
     HistoricalStep,
     IntermediateInference,
     PivotalTestConstituents,
-    ReasoningVariations,
     Test,
     TestStep,
+    Fence,
+    ReasoningConfigurations,
+    TestConfiguration,
 )
 
 DECISION_TOSS_UP_STATEMENT = (
@@ -27,10 +27,10 @@ DISTRACTION_STATEMENT = '...provides trivial* distraction away from the "better"
 OVERALL_FAIRNESS_STATEMENT = "I believe this to be a fair probe of LLM agent behavior in scenarios where, despite a distractor, inferencing over two previously-gathered environment facts should guide decision-making."
 
 
-with open("background.svg") as f:
+with open("assets/background.svg") as f:
     BACKGROUND_SVG = f.read()
 
-with open("preferability_w_no_other_context.svg") as f:
+with open("assets/preferability_w_no_other_context.svg") as f:
     PREFERABILITY_SVG = f.read()
 
 SIZE_MULTIPLIER = 1.0
@@ -220,17 +220,17 @@ class AgreementRater(ui.slider):
 
 class TestReader(ui.row):
     LABELS_BY_FENCE = {
-        Fences.RH: "Red Herring",
-        Fences.IIC: "Decision Informing Premise",
-        Fences.IIP1: "Previously Gathered Fact 1",
-        Fences.IIP2: "Previously Gathered Fact 2",
+        Fence.RED_HERRING: "Red Herring",
+        Fence.INTERMEDIATE_INFERENCE_CONCLUSION: "Decision Informing Premise",
+        Fence.INTERMEDIATE_INFERENCE_PREMISE_ONE: "Previously Gathered Fact 1",
+        Fence.INTERMEDIATE_INFERENCE_PREMISE_TWO: "Previously Gathered Fact 2",
     }
 
     COLORS_BY_FENCE = {
-        Fences.RH: "#ffd1d7",
-        Fences.IIC: "#d1dbff",
-        Fences.IIP1: "#f0ffd1",
-        Fences.IIP2: "#f1d1ff",
+        Fence.RED_HERRING: "#ffd1d7",
+        Fence.INTERMEDIATE_INFERENCE_CONCLUSION: "#d1dbff",
+        Fence.INTERMEDIATE_INFERENCE_PREMISE_ONE: "#f0ffd1",
+        Fence.INTERMEDIATE_INFERENCE_PREMISE_TWO: "#f1d1ff",
     }
 
     CHOSEN_EMOJI = "🔘"
@@ -247,16 +247,18 @@ class TestReader(ui.row):
             self.right_col = ui.column().style("height: 1200px; overflow: scroll;")
 
         self.configs = {}
-        for reasoning_variation in ReasoningVariations:
-            for context_length_variation in ContextLengthVariations:
-                name = f"{context_length_variation.value}_{reasoning_variation.value}"
-                episode_keys = test.configurations[reasoning_variation][
-                    context_length_variation
-                ]
-                approx_token_length = test.get_approx_token_length(episode_keys)
-                name = f"({approx_token_length:04} tokens) {name}"
+        for (
+            reasoning_variation_key,
+            reasoning_variation_val,
+        ) in test.configurations.model_dump().items():
+            for (
+                context_length_variation_key,
+                context_length_variation_val,
+            ) in reasoning_variation_val.items():
+                name = f"{context_length_variation_key}_{reasoning_variation_key}"
+                episode_keys = context_length_variation_val
                 self.configs[name] = episode_keys
-        self.selected_config = sorted(list(self.configs.keys()))[-1]
+        self.selected_config_name = sorted(list(self.configs.keys()))[-1]
 
         with self.left_col:
             ui.markdown("# Full Test Reader")
@@ -264,7 +266,7 @@ class TestReader(ui.row):
                 ui.select(
                     options=sorted(list(self.configs.keys())),
                     label="Configuration",
-                    value=self.selected_config,
+                    value=self.selected_config_name,
                 )
                 .props("dense standout")
                 .style("width: 370px;")
@@ -284,7 +286,25 @@ class TestReader(ui.row):
 
     def update_right_col(self) -> None:
         self.right_col.clear()
-        self.selected_config = self.select.value
+        self.selected_config_name = self.select.value
+
+        for (
+            reasoning_variation_key,
+            reasoning_variation_val,
+        ) in self.test.configurations.model_dump().items():
+            for (
+                context_length_variation_key,
+                context_length_variation_val,
+            ) in reasoning_variation_val.items():
+                if (
+                    f"{context_length_variation_key}_{reasoning_variation_key}"
+                    == self.selected_config_name
+                ):
+                    self.selected_config = TestConfiguration(
+                        **context_length_variation_val
+                    )
+                    break
+
         with self.right_col:
             if self.test.system_prompt:
                 with ui.row().classes(
@@ -294,14 +314,18 @@ class TestReader(ui.row):
                     ui.markdown(self.test.system_prompt).style("width: 900px;").classes(
                         " bg-white rounded-xl p-4"
                     )
-            for episode_name in self.test.get_shuffled_episodes(
-                self.configs[self.selected_config]
-            ):
+            episodes = self.selected_config.historical_episode_uids
+            episodes = random.sample(episodes, len(episodes))
+            episodes += [self.selected_config.final_episode_uid]
+            for episode_name in episodes:
                 with ui.row().classes(
                     "items-start justify-end gap-12 p-6 rounded-xl bg-grey-4 w-full"
                 ).style("margin-left: auto;"):
                     ui.label(episode_name)
-                    episode = self.test.episodes[episode_name]
+                    if episode_name in self.test.historical_episodes:
+                        episode = self.test.historical_episodes[episode_name]
+                    else:
+                        episode = self.test.test_episodes[episode_name]
                     with ui.column().classes("gap-2"):
                         for step in episode:
                             ui.label("OBSERVATION:").classes("text-lg")

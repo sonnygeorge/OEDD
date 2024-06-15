@@ -6,18 +6,20 @@ from typing import List, Literal, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-import rich
+
+# import rich
 import scipy.stats as stats
 from dotenv import load_dotenv
 from jinja2 import Template
-from langchain_ai21 import ChatAI21
-from langchain_anthropic import ChatAnthropic
+
+# from langchain_ai21 import ChatAI21
+# from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
-from langchain_nvidia_ai_endpoints import ChatNVIDIA
+
+# from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
+# from langchain_nvidia_ai_endpoints import ChatNVIDIA
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
@@ -36,10 +38,11 @@ with open("templates/system_prompt.jinja2") as f:
 RESULTS_CSV_PATH = "results.csv"
 USER_PROMPT_TEMPLATE = Template(user_prompt_template_str)
 SYSTEM_PROMPT_TEMPLATE = Template(system_prompt_template_str)
-TEMPERATURE = 0.01  # FIXME: Change dummmy value for fast testing
-MIN_RUNS_PER = 10  # FIXME: Change dummmy value for fast testing
-CONFIDENCE_INTERVAL = 0.95  # FIXME: Change dummmy value for fast testing
-MAX_CONFIDENCE_INTERVAL_WIDTH = 0.9  # FIXME: Change dummmy value for fast testing
+TEMPERATURE = 0.5
+MIN_RUNS_PER = 30
+MAX_RUNS_PER = 50
+CONFIDENCE_INTERVAL = 0.90
+CONFIDENCE_INTERVAL_WIDTH_THRESHOLD = 0.1
 
 
 class Config(BaseModel):
@@ -48,27 +51,22 @@ class Config(BaseModel):
     length_class: Literal["short", "medium", "long"]
 
 
-# FIXME: Phi? Qwen2? 3.5-turbo?
 MODELS_TO_TEST = [
-    ChatOpenAI(model="gpt-3.5-turbo", temperature=TEMPERATURE),  # FIXME: model choice
-    # ChatAnthropic(
-    #     model="claude-3-sonnet-20240229", temperature=TEMPERATURE
-    # ),  # FIXME: model choice
-    # ChatGoogleGenerativeAI(
-    #     model="gemini-1.5-pro-latest", temperature=TEMPERATURE
-    # ),  # FIXME: model choice
-    # ChatNVIDIA(
-    #     model="mistralai/mixtral-8x22b-instruct-v0.1",
-    #     temperature=TEMPERATURE,
-    # ),  # FIXME: model choice
+    ChatOpenAI(model="gpt-3.5-turbo-0125", temperature=TEMPERATURE),
+    ChatOpenAI(model="gpt-4o-2024-05-13", temperature=TEMPERATURE),
+    ChatGoogleGenerativeAI(model="gemini-1.5-pro-latest", temperature=TEMPERATURE),
+    # ChatAnthropic(model="claude-3-opus-20240229", temperature=TEMPERATURE),
     # ChatNVIDIA(
     #     model="meta/llama3-70b-instruct",
     #     temperature=TEMPERATURE,
-    # ),  # FIXME: model choice
-    # ChatAI21(model="jamba-instruct", temperature=TEMPERATURE),  # FIXME: model choice
+    # ),
+    # ChatNVIDIA(
+    #     model="mistralai/mixtral-8x22b-instruct-v0.1",
+    #     temperature=TEMPERATURE,
+    # ),
 ]
 
-PRINT_MSG = "MODEL: {model}  |  LEN: {len}  |  ELAPSED: {elapsed}  |  TITLE: {title}  |"
+PRINT_MSG = "{i} | {model}  |  LEN: {len}  |  ELAPSED: {elapsed}  |  TITLE: {title}  |"
 PRINT_MSG += "  RH: {rh}  |  II: {ii}  |  CUR CI WIDTH: {ci:.3f}  |  CORRECT: {avg:.3f}"
 
 
@@ -142,18 +140,21 @@ CONFIGS_TO_RUN = [
 ]
 
 
-def extract_action_choice_from_response_content(response_content: str) -> Optional[str]:
+def extract_action_choice_from_response_content(
+    response_content: str,
+) -> Optional[Tuple[str, str]]:
     pattern = r"```json(.*?)```"
     matches = re.findall(pattern, response_content, re.DOTALL)
 
     for match in matches[::-1]:
         try:
             action_choice_object = LlmChoice.model_validate_json(match)
-            return action_choice_object.choice
+            return action_choice_object.chosen, action_choice_object.reasoning
         except Exception:
             print(f"Error decoding JSON")
 
-    return None
+    print("No JSON found in response content:", response_content[:90], "...")
+    return None, None
 
 
 def calculate_confidence_interval(data, confidence_level=0.95) -> Tuple[float, float]:
@@ -186,11 +187,11 @@ def get_temperature_from_model(model: BaseChatModel) -> float:
 def infer_action_choice(
     chat_model: BaseChatModel,
     test_run_data: TestRun,
-) -> Optional[str]:
+) -> Optional[Tuple[str, str]]:
     model_string = get_model_string_from_model(chat_model)
     if model_string == "mistralai/mixtral-8x22b-instruct-v0.1":
         # Hotfix for this NVIDIA API model since requests get bounced otherwise
-        single_prompt = test_run_data.system_prompt + "\n" + test_run_data.user_prompt
+        single_prompt = test_run_data.system_prompt + test_run_data.user_prompt
         messages = [single_prompt]
     else:
         messages = [
@@ -204,9 +205,10 @@ def infer_action_choice(
 def run_test_config_until_confidence_interval_small_enough(
     chat_model: BaseChatModel,
     test: Test,
-    include_red_herring: bool,
-    require_intermediate_inference: bool,
-    length_class: Literal["short", "medium", "long"],
+    include_red_herring: Optional[bool] = None,
+    require_intermediate_inference: Optional[bool] = None,
+    length_class: Optional[Literal["short", "medium", "long"]] = None,
+    get_bias: Optional[bool] = False,
 ) -> pd.DataFrame:
     inference_runs_correctness = []
     runs: List[TestRun] = []
@@ -221,24 +223,26 @@ def run_test_config_until_confidence_interval_small_enough(
             include_red_herring=include_red_herring,
             require_intermediate_inference=require_intermediate_inference,
             length_class=length_class,
+            get_bias=get_bias,
         )
 
         # Get inference
-        chosen_char = infer_action_choice(
+        chosen_char, given_reasoning = infer_action_choice(
             chat_model=chat_model, test_run_data=test_run_data
         )
 
         # Finalize run data
         test_run_data.chosen_char = chosen_char
+        test_run_data.given_reasoning = given_reasoning
         test_run_data.was_correct = chosen_char == test_run_data.better_choice_char
-        inference_runs_correctness.append(test_run_data.was_correct)
         test_run_data.chat_model_string = get_model_string_from_model(chat_model)
         test_run_data.temperature = get_temperature_from_model(chat_model)
-
         test_run_data.iteration_num = len(inference_runs_correctness) + 1
+
+        inference_runs_correctness.append(test_run_data.was_correct)
         runs.append(test_run_data)
 
-        # Exit loop if confidence interval converged
+        # Exit loop if confidence interval converged enough
         if len(inference_runs_correctness) > 1:
             lower_bound, upper_bound = calculate_confidence_interval(
                 inference_runs_correctness, CONFIDENCE_INTERVAL
@@ -246,6 +250,7 @@ def run_test_config_until_confidence_interval_small_enough(
             confidence_interval_width = upper_bound - lower_bound
             elapsed = time.perf_counter() - start
             print_msg = PRINT_MSG.format(
+                i=test_run_data.iteration_num,
                 model=test_run_data.chat_model_string,
                 len=test_run_data.length_class,
                 elapsed=str(elapsed).split(".")[0],
@@ -258,14 +263,15 @@ def run_test_config_until_confidence_interval_small_enough(
             print(print_msg)
             if (
                 len(inference_runs_correctness) >= MIN_RUNS_PER
-                and confidence_interval_width < MAX_CONFIDENCE_INTERVAL_WIDTH
-            ):
+                and confidence_interval_width < CONFIDENCE_INTERVAL_WIDTH_THRESHOLD
+            ) or len(inference_runs_correctness) >= MAX_RUNS_PER:
                 break
 
     return pd.DataFrame([run.model_dump() for run in runs])
 
 
 def add_runs_to_csv(df: pd.DataFrame) -> None:
+    df = df.drop(columns=["system_prompt", "user_prompt"])  # Hotfix - file IO too slow
     if os.path.exists(RESULTS_CSV_PATH):
         temp_csv_path = "temp.csv"
         old_df = pd.read_csv(RESULTS_CSV_PATH)
@@ -276,25 +282,37 @@ def add_runs_to_csv(df: pd.DataFrame) -> None:
         df.to_csv(RESULTS_CSV_PATH, mode="w", index=False)
 
 
-def run_tests_for_model(chat_model: BaseChatModel):
+def run_tests_for_model(
+    chat_model: BaseChatModel, get_bias: bool = False
+) -> Optional[pd.DataFrame]:
     # Skip if model results already in .csv
     model_string = get_model_string_from_model(chat_model)
     if os.path.exists(RESULTS_CSV_PATH):
         df = pd.read_csv(RESULTS_CSV_PATH)
         if model_string in df["chat_model_string"].values:
             print(f"Skipping '{model_string}' - already exists in results .csv.")
-            return
+            return None
 
     try:
         all_model_runs = pd.DataFrame()
-        for fname in os.listdir("data"):
+        for fname in os.listdir("tests"):
             if not fname.endswith(".json"):
                 continue
 
-            with open(f"data/{fname}", "r") as f:
+            with open(f"tests/{fname}", "r") as f:
                 data = json.load(f)
             test = Test(**data)
 
+            if get_bias:
+                df = run_test_config_until_confidence_interval_small_enough(
+                    chat_model=chat_model,
+                    test=test,
+                    include_red_herring=None,
+                    require_intermediate_inference=None,
+                    length_class=None,
+                    get_bias=True,
+                )
+                all_model_runs = pd.concat([all_model_runs, df], ignore_index=True)
             for config in CONFIGS_TO_RUN:
                 df = run_test_config_until_confidence_interval_small_enough(
                     chat_model=chat_model,
@@ -304,19 +322,29 @@ def run_tests_for_model(chat_model: BaseChatModel):
                     length_class=config.length_class,
                 )
                 all_model_runs = pd.concat([all_model_runs, df], ignore_index=True)
-                break  # FIXME: Remove
-            break  # FIXME: Remove
 
         add_runs_to_csv(all_model_runs)
     except Exception as e:
         print(f"Error running tests for '{model_string}': {e}")
 
+    return all_model_runs
 
-def run_tests():
+
+def run_tests(get_a_priori_bias: bool = False) -> None:
+    start = time.perf_counter()
+    last_model_completed = start
+    dfs = []
     for chat_model in MODELS_TO_TEST:
-        run_tests_for_model(chat_model=chat_model)
-        # break  # FIXME: Remove
+        df = run_tests_for_model(chat_model=chat_model, get_bias=get_a_priori_bias)
+        if df is not None:
+            dfs.append(df)
+        elapsed = time.perf_counter() - last_model_completed
+        print(f"### Elapsed for model: {str(elapsed).split('.')[0]} ###")
+        last_model_completed = time.perf_counter()
+    print(
+        f"### Elapsed for all models: {str(time.perf_counter() - start).split('.')[0]} ###"
+    )
 
 
 if __name__ == "__main__":
-    run_tests()
+    run_tests(get_a_priori_bias=True)
