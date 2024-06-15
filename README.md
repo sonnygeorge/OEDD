@@ -1,13 +1,14 @@
 # LEG
 
-Official codebase for the paper Letting Experience Guide: Probing the Capacity of Language Model Agents to Adaptively Reason and Make Decisions in Novel Environments
+Official codebase for the paper _Letting Experience Guide: Probing the Capacity of Language Model Agents to Adaptively Reason and Make Decisions in Novel Environments_
 
-## LEG Corpus of Reasoning Tests for Llm Agents
+## LEG Corpus of Reasoning Tests for LLM Agents
 
 The LEG corpus is a collection of reasoning tests designed to evaluate the capacity of language model agents to adaptively reason and make decisions in novel environments. More details about the corpus can be found in the paper.
 
-The corpus can be downloaded here: [omitted for review]
-Our `results.csv` from our experiments can be downloaded here: [omitted for review]
+The different versions of the corpus can be downloaded here: [omitted for review]
+
+Our `results.csv` from our initial experiments using v1.0.0 can be downloaded here: [omitted for review]
 
 ## Code Structure
 
@@ -34,11 +35,13 @@ Corpus updates and justifications will be documented here:
 
 To suggest changes to the corpus, please contact the repository owner directly with your suggestions/changes/additions.
 
-In general, we ask that people do not discuss the contents of the corpus in public forums to avoid biasing future evaluations.
+In general, we ask that people refrain from discussing the contents of the corpus in public forums to avoid biasing future evaluations.
 
 ## Corpus Visualization App
 
-We provide GUI application that allows users to more intuitively visualize the contents of the LEG corpus.
+We provide a custom (NiceGUI)[https://github.com/zauberzeug/nicegui] application that allows users to more intuitively visualize the contents of the LEG corpus.
+
+It can be run locally by executing the following command:
 
 ```bash
 $ python app.py
