@@ -23,7 +23,7 @@ Our `results.csv` from our initial experiments using v1.0.0 can be downloaded he
 └── run_tests.py              # script to run tests with GPT-3.5-Turbo, GPT-4o, and Gemini 1.5 Pro
 ```
 
-## Continual Updates to Corpus
+## Continual Updates
 
 We consider this a living corpus and encourage community scrutiny, feedback, and contributions.
 
