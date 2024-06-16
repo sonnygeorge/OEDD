@@ -1,14 +1,14 @@
-# LEG
+# OEDD
 
-Official codebase for the paper _Letting Experience Guide: Probing the Capacity of Language Model Agents to Adaptively Reason and Make Decisions in Novel Environments_
+Official codebase for the paper _Probing the Capacity of Language Model Agents to Operationalize Disparate Experiential Context Despite Distraction_
 
-## LEG Corpus of Reasoning Tests for LLM Agents
+## OEDD Corpus of Reasoning Tests for LLM Agents
 
-The LEG corpus is a collection of reasoning tests designed to evaluate the capacity of language model agents to adaptively reason and make decisions in novel environments. More details about the corpus can be found in the paper.
+The OEDD (Operationalize Experience Despite Distraction) corpus is a collection of reasoning tests designed to evaluate the capacity of language model agent systems to make smart action-inferences despite plausible distractions.
 
 The different versions of the corpus can be downloaded here: [omitted for review]
 
-Our `results.csv` from our initial experiments using v1.0.0 can be downloaded here: [omitted for review]
+Our `results.csv` from our initial experiments using v1.0.0 of the corpus can be downloaded here: [omitted for review]
 
 ## Code Structure
 
@@ -19,7 +19,7 @@ Our `results.csv` from our initial experiments using v1.0.0 can be downloaded he
 │   ├── models.py             #   Pydantic data objects
 │   └── utils.py              #   helper functions
 ├── app.py                    # runs NiceGUI app on local machine to visualize corpus
-├── figures.py                # script to generate matplotlib figures from test results
+├── figures.py                # script to generate matplotlib figures from
 └── run_tests.py              # script to run tests with GPT-3.5-Turbo, GPT-4o, and Gemini 1.5 Pro
 ```
 
@@ -31,7 +31,7 @@ Corpus updates and justifications will be documented here:
 
 | Date | Version | Comments |
 |-|-|-|
-| [release date] | 1.0.0 | Initial release of LEG corpus |
+| [release date] | 1.0.0 | Initial release |
 
 To suggest changes to the corpus, please contact the repository owner directly with your suggestions/changes/additions.
 
@@ -39,7 +39,7 @@ In general, we ask that people refrain from discussing the contents of the corpu
 
 ## Corpus Visualization App
 
-We provide a custom (NiceGUI)[https://github.com/zauberzeug/nicegui] application that allows users to more intuitively visualize the contents of the LEG corpus.
+We provide a custom [NiceGUI](https://github.com/zauberzeug/nicegui) application that allows users to more intuitively visualize the contents of the OEDD tests.
 
 It can be run locally by executing the following command:
 
@@ -47,7 +47,7 @@ It can be run locally by executing the following command:
 $ python app.py
 ```
 
-(Requires that the corpus be downloaded and extracted to a `tests` directory in the root of the repository.)
+This script requires that the corpus be downloaded and extracted to a `tests` directory in the root of the repository.
 
 ## Canary String
 
