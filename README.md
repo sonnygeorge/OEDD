@@ -18,6 +18,7 @@ Our `results.csv` from our initial experiments using v1.0.0 of the corpus can be
 ├── src                       # main source code
 │   ├── models.py             #   Pydantic data objects
 │   └── utils.py              #   helper functions
+├── templates                 # prompts templates
 ├── app.py                    # runs NiceGUI app on local machine to visualize corpus
 ├── figures.py                # script to generate matplotlib figures from
 └── run_tests.py              # script to run tests with GPT-3.5-Turbo, GPT-4o, and Gemini 1.5 Pro
