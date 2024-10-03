@@ -2,15 +2,17 @@ from typing import Literal, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as path_effects
-import numpy as np
 from matplotlib.colors import LinearSegmentedColormap
+import numpy as np
 import pandas as pd
+from scipy import stats
+import statsmodels.api as sm
 
 
-P1 = "P1"
-P2 = "P2"
-P1_RH = "P1+RH"
-P2_RH = "P2+RH"
+P1 = "1P"
+P2 = "2P"
+P1_RH = "1P+RH"
+P2_RH = "2P+RH"
 CHARS_PER_TOKEN = 4
 
 
@@ -128,7 +130,7 @@ def get_heatmaps(df: pd.DataFrame):
     plt.rcParams["font.size"] = 12
     plt.rcParams["axes.labelsize"] = 12
     plt.rcParams["font.family"] = "sans-serif"
-    title = "P(Better Choice) Matrices by Model"
+    # title = "P(Better Choice) Matrices by Model"
     models = df["chat_model_string"].unique()
     n_heatmaps = len(models)
 
@@ -192,9 +194,6 @@ def get_heatmaps(df: pd.DataFrame):
 def get_lineplot(df: pd.DataFrame, red_herring: Optional[bool] = None):
     plt.clf()
     plt.style.use("ggplot")
-    # plt.rcParams["font.size"] = 12
-    # plt.rcParams["font.weight"] = "bold"
-    # plt.rcParams["font.family"] = "sans-serif"
     df = df.copy()
     if red_herring is not None:
         df = df[df["include_red_herring"] == red_herring]
@@ -246,21 +245,230 @@ def get_lineplot(df: pd.DataFrame, red_herring: Optional[bool] = None):
     plt.savefig(fname, format="pdf")
 
 
+def get_pval_of_results_given_null_that_easier_setup_is_actually_harder(
+    df_easier: pd.DataFrame, df_harder: pd.DataFrame
+) -> float:
+    """Given two DataFrames containing trial results for purportedly easier (higher
+    success rate) and harder (lower success rate) bernoulli experiments, computes the
+    p-value for a null hypothesis of the reverse being true--that is, the
+    "easier" bernoulli experiment actually being the harder one.
+
+    Args:
+        df_easier (pd.DataFrame): A DataFrame containing trial results for the
+            'easier' setup. Should have columns 'test_title' and 'was_correct',
+            where 'was_correct' is a boolean indicating if the trial was successful.
+        df_harder (pd.DataFrame): A DataFrame containing trial results for the
+            'harder' setup. Same structure as `df_easier`.
+
+    Returns:
+        float: The p-value of the null hypothesis that the purportedly easier setup is,
+        in fact, harder than the purportedly harder setup.
+    """
+    n_easier_tests = len(df_easier["test_title"].unique())
+    n_harder_tests = len(df_harder["test_title"].unique())
+    assert n_easier_tests == n_harder_tests
+
+    n_easier_trials = df_easier.groupby("test_title").size().min() * n_easier_tests
+    easier_p = (
+        df_easier.groupby("test_title")
+        .agg({"was_correct": "mean"})
+        .mean()["was_correct"]
+    )
+
+    n_harder_trials = df_harder.groupby("test_title").size().min() * n_harder_tests
+    harder_p = (
+        df_harder.groupby("test_title")
+        .agg({"was_correct": "mean"})
+        .mean()["was_correct"]
+    )
+
+    _, p_val = sm.stats.proportions_ztest(
+        count=[
+            np.floor(n_easier_trials * easier_p),
+            np.ceil(n_harder_trials * harder_p),
+        ],
+        nobs=[n_easier_trials, n_harder_trials],
+        alternative="larger",
+    )
+    return p_val
+
+
+def get_pval_of_null_that_each_test_is_greater_than_half(df: pd.DataFrame) -> float:
+    """Calculates the p-value for the null hypothesis that the actual success rate is
+    greater than or equal to 0.5.
+
+    Args:
+        df (pd.DataFrame): A DataFrame containing trial results. Should have columns
+        'test_title' and 'was_correct',
+
+    Returns:
+        float: The p-value across all tests for the null hypothesis that the true success
+        rate is greater than or equal to 0.5.
+    """
+    p_vals = []
+
+    for test_title, group in df.groupby("test_title"):
+        successes = group["was_correct"].sum()
+        trials = len(group)
+        p_val = stats.binom_test(successes, trials, p=0.5, alternative="greater")
+        p_vals.append(p_val)
+
+    return sum(p_vals) / len(p_vals)  # Law of total probability
+
+
+def compute_paired_t_test_p_values(df: pd.DataFrame, chat_model_string: str) -> None:
+    df = df[df["chat_model_string"] == chat_model_string]
+    dfs_by_setup = {
+        f"{P1} short": df[
+            (df["include_red_herring"] == False)
+            & (df["require_intermediate_inference"] == False)
+            & (df["length_class"] == "short")
+        ],
+        f"{P1} medium": df[
+            (df["include_red_herring"] == False)
+            & (df["require_intermediate_inference"] == False)
+            & (df["length_class"] == "medium")
+        ],
+        f"{P1} long": df[
+            (df["include_red_herring"] == False)
+            & (df["require_intermediate_inference"] == False)
+            & (df["length_class"] == "long")
+        ],
+        f"{P2} short": df[
+            (df["include_red_herring"] == False)
+            & (df["require_intermediate_inference"] == True)
+            & (df["length_class"] == "short")
+        ],
+        f"{P2} medium": df[
+            (df["include_red_herring"] == False)
+            & (df["require_intermediate_inference"] == True)
+            & (df["length_class"] == "medium")
+        ],
+        f"{P2} long": df[
+            (df["include_red_herring"] == False)
+            & (df["require_intermediate_inference"] == True)
+            & (df["length_class"] == "long")
+        ],
+        f"{P1_RH} short": df[
+            (df["include_red_herring"] == True)
+            & (df["require_intermediate_inference"] == False)
+            & (df["length_class"] == "short")
+        ],
+        f"{P1_RH} medium": df[
+            (df["include_red_herring"] == True)
+            & (df["require_intermediate_inference"] == False)
+            & (df["length_class"] == "medium")
+        ],
+        f"{P1_RH} long": df[
+            (df["include_red_herring"] == True)
+            & (df["require_intermediate_inference"] == False)
+            & (df["length_class"] == "long")
+        ],
+        f"{P2_RH} short": df[
+            (df["include_red_herring"] == True)
+            & (df["require_intermediate_inference"] == True)
+            & (df["length_class"] == "short")
+        ],
+        f"{P2_RH} medium": df[
+            (df["include_red_herring"] == True)
+            & (df["require_intermediate_inference"] == True)
+            & (df["length_class"] == "medium")
+        ],
+        f"{P2_RH} long": df[
+            (df["include_red_herring"] == True)
+            & (df["require_intermediate_inference"] == True)
+            & (df["length_class"] == "long")
+        ],
+    }
+
+    red_herring_comparisons = [
+        (f"{P1} short", f"{P1_RH} short"),
+        (f"{P1} medium", f"{P1_RH} medium"),
+        (f"{P1} long", f"{P1_RH} long"),
+        (f"{P2} short", f"{P2_RH} short"),
+        (f"{P2} medium", f"{P2_RH} medium"),
+        (f"{P2} long", f"{P2_RH} long"),
+    ]
+    disparate_premises_comparisons = [
+        (f"{P1} short", f"{P2} short"),
+        (f"{P1} medium", f"{P2} medium"),
+        (f"{P1} long", f"{P2} long"),
+        (f"{P1_RH} short", f"{P2_RH} short"),
+        (f"{P1_RH} medium", f"{P2_RH} medium"),
+        (f"{P1_RH} long", f"{P2_RH} long"),
+    ]
+    short_to_medium_comparisons = [
+        (f"{P1} short", f"{P1} medium"),
+        (f"{P1_RH} short", f"{P1_RH} medium"),
+        (f"{P2} short", f"{P2} medium"),
+        (f"{P2_RH} short", f"{P2_RH} medium"),
+    ]
+    medium_to_long_comparisons = [
+        (f"{P1} medium", f"{P1} long"),
+        (f"{P1_RH} medium", f"{P1_RH} long"),
+        (f"{P2} medium", f"{P2} long"),
+        (f"{P2_RH} medium", f"{P2_RH} long"),
+    ]
+
+    print(f"\nModel: {chat_model_string}")
+    print("\nAdding Red Herring:")
+    for red_herring_comparison in red_herring_comparisons:
+        df_easier = dfs_by_setup[red_herring_comparison[0]]
+        df_harder = dfs_by_setup[red_herring_comparison[1]]
+        p_val = get_pval_of_results_given_null_that_easier_setup_is_actually_harder(
+            df_easier, df_harder
+        )
+        p_val_string = f"{p_val:.2E}" if p_val < 0.05 else f"{p_val:.2f}"
+        print(
+            f"  P('{red_herring_comparison[0]}' harder than '{red_herring_comparison[1]}'): {p_val_string}"
+        )
+
+    print("\nRequiring Reasoning Over Disparate Premises:")
+    for disparate_premises_comparison in disparate_premises_comparisons:
+        df_easier = dfs_by_setup[disparate_premises_comparison[0]]
+        df_harder = dfs_by_setup[disparate_premises_comparison[1]]
+        p_val = get_pval_of_results_given_null_that_easier_setup_is_actually_harder(
+            df_easier, df_harder
+        )
+        p_val_string = f"{p_val:.2E}" if p_val < 0.05 else f"{p_val:.2f}"
+        print(
+            f"  P('{disparate_premises_comparison[0]}' harder than '{disparate_premises_comparison[1]}'): {p_val_string}"
+        )
+
+    print("\nGoing From Short to Medium:")
+    for short_to_medium_comparison in short_to_medium_comparisons:
+        df_easier = dfs_by_setup[short_to_medium_comparison[0]]
+        df_harder = dfs_by_setup[short_to_medium_comparison[1]]
+        p_val = get_pval_of_results_given_null_that_easier_setup_is_actually_harder(
+            df_easier, df_harder
+        )
+        p_val_string = f"{p_val:.2E}" if p_val < 0.05 else f"{p_val:.2f}"
+        print(
+            f"  P('{short_to_medium_comparison[0]}' harder than '{short_to_medium_comparison[1]}'): {p_val_string}"
+        )
+
+    print("\nGoing From Medium to Long:")
+    for medium_to_long_comparison in medium_to_long_comparisons:
+        df_easier = dfs_by_setup[medium_to_long_comparison[0]]
+        df_harder = dfs_by_setup[medium_to_long_comparison[1]]
+        p_val = get_pval_of_results_given_null_that_easier_setup_is_actually_harder(
+            df_easier, df_harder
+        )
+        p_val_string = f"{p_val:.2E}" if p_val < 0.05 else f"{p_val:.2f}"
+        print(
+            f"  P('{medium_to_long_comparison[0]}' harder than '{medium_to_long_comparison[1]}'): {p_val_string}"
+        )
+
+
 if __name__ == "__main__":
     df = pd.read_csv("results.csv")
-
-    df["chat_model_string"] = df["chat_model_string"].apply(
-        lambda x: "Gemini 1.5 Pro" if "gemini-1.5-pro-latest" in x else x
-    )
-    df["chat_model_string"] = df["chat_model_string"].apply(
-        lambda x: "GPT-3.5 Turbo" if "gpt-3.5-turbo" in x else x
-    )
-    df["chat_model_string"] = df["chat_model_string"].apply(
-        lambda x: "GPT-4o" if "gpt-4o" in x else x
-    )
 
     get_heatmaps(df)
     get_barcharts(df)
     get_lineplot(df, red_herring=True)
     get_lineplot(df, red_herring=False)
     get_lineplot(df)
+
+    compute_paired_t_test_p_values(df, chat_model_string="gpt-3.5-turbo-0125")
+    compute_paired_t_test_p_values(df, chat_model_string="gpt-4o-2024-05-13")
+    compute_paired_t_test_p_values(df, chat_model_string="models/gemini-1.5-pro-latest")
