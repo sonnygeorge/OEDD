@@ -7,7 +7,6 @@ from typing import List, Literal, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-# import rich
 import scipy.stats as stats
 from dotenv import load_dotenv
 from jinja2 import Template
@@ -347,4 +346,4 @@ def run_tests(get_a_priori_bias: bool = False) -> None:
 
 
 if __name__ == "__main__":
-    run_tests(get_a_priori_bias=True)
+    run_tests(get_a_priori_bias=False)
